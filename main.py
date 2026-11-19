@@ -12,7 +12,11 @@ GOLD = "#FFD700"
 RED = "#FF3B5C"
 GREEN = "#00FF9C"
 GLASS = "#1A1F2E"
+GLASS_ALPHA = "#8C1A1F2E"
 BORDER = "#2A3145"
+WHITE = "#FFFFFF"
+WHITE_70 = "#B3FFFFFF"
+WHITE_54 = "#8AFFFFFF"
 
 METAAPI_TOKEN = os.getenv("METAAPI_TOKEN", "ضع_التوكن_هنا")
 
@@ -107,8 +111,8 @@ def glass_card(content, padding=16, border_color=BORDER):
     return ft.Container(
         content=content,
         padding=padding,
-        bgcolor=ft.Colors.with_opacity(0.55, GLASS),
-        border=ft.border.all(1, border_color),
+        bgcolor=GLASS_ALPHA,
+        border=ft.Border.all(1, border_color),
         border_radius=18,
         blur=ft.Blur(10, 10, ft.BlurStyle.NORMAL),
         shadow=ft.BoxShadow(
@@ -143,7 +147,7 @@ def add_log(msg):
 
     if state.log_list is not None:
         state.log_list.controls = [
-            ft.Text(item, size=11, color=ft.Colors.WHITE70) for item in state.logs
+            ft.Text(item, size=11, color=WHITE_70) for item in state.logs
         ]
         if state.page is not None:
             state.page.update()
@@ -241,7 +245,7 @@ async def main(page: ft.Page):
     page.title = "CyberBot MT5"
     page.bgcolor = BG
     page.theme_mode = ft.ThemeMode.DARK
-    page.padding = 0
+    page.padding = 20
 
     # ---------- شاشة البداية ----------
     splash = ft.Column(
@@ -252,7 +256,7 @@ async def main(page: ft.Page):
             ft.Text(
                 "جاري الاتصال بخوادم السيولة والذكاء الاصطناعي...",
                 size=13,
-                color=ft.Colors.WHITE70,
+                color=WHITE_70,
                 text_align=ft.TextAlign.CENTER,
             ),
             ft.ProgressBar(width=240, color=CYAN, bgcolor=GLASS),
@@ -261,72 +265,11 @@ async def main(page: ft.Page):
         spacing=20,
     )
 
-    # ---------- شاشة تسجيل الدخول ----------
-    acc_field = ft.TextField(
-        label="MT5 Account ID",
-        bgcolor=GLASS,
-        border_color=CYAN,
-        color=ft.Colors.WHITE,
-        label_style=ft.TextStyle(color=CYAN),
-    )
-    pass_field = ft.TextField(
-        label="Password",
-        password=True,
-        can_reveal_password=True,
-        bgcolor=GLASS,
-        border_color=CYAN,
-        color=ft.Colors.WHITE,
-        label_style=ft.TextStyle(color=CYAN),
-    )
-    server_dd = ft.Dropdown(
-        label="Server",
-        options=[
-            ft.dropdown.Option("Headway-Real"),
-            ft.dropdown.Option("Headway-Demo"),
-            ft.dropdown.Option("Custom Server"),
-        ],
-        value="Headway-Demo",
-        bgcolor=GLASS,
-        border_color=CYAN,
-        color=ft.Colors.WHITE,
-        label_style=ft.TextStyle(color=CYAN),
-    )
-    status_text = ft.Text("", color=CYAN, size=12)
-
-    async def on_connect(e):
-        status_text.value = "⏳ جاري الاتصال الآمن..."
-        page.update()
-        ok = await connect_mt5(acc_field.value, pass_field.value, server_dd.value)
-        if ok:
-            status_text.value = "✅ متصل"
-            page.go("/dashboard")
-        else:
-            status_text.value = "❌ تحقق من البيانات أو التوكن"
-        page.update()
-
-    login_view = ft.Container(
-        content=ft.Column(
-            [
-                ft.Container(height=40),
-                ft.Text("SECURE ACCESS", size=22, color=PURPLE, weight=ft.FontWeight.BOLD),
-                ft.Text("ربط حساب MetaTrader 5", size=13, color=ft.Colors.WHITE54),
-                acc_field,
-                pass_field,
-                server_dd,
-                neon_button("اتصال آمن وتفعيل المحرك", CYAN, on_connect, width=260),
-                status_text,
-            ],
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=16,
-        ),
-        padding=24,
-    )
-
     # ---------- لوحة التحكم ----------
     balance_txt = ft.Text("$0.00", size=26, color=GOLD, weight=ft.FontWeight.BOLD)
     equity_txt = ft.Text("$0.00", size=16, color=CYAN)
     pl_txt = ft.Text("$0.00", size=16, color=GREEN)
-    signal_gauge = ft.Text("NEUTRAL 50%", size=20, color=ft.Colors.WHITE70)
+    signal_gauge = ft.Text("NEUTRAL 50%", size=20, color=WHITE_70)
     log_list = ft.ListView(expand=True, spacing=4, height=140)
     state.log_list = log_list
 
@@ -383,7 +326,7 @@ async def main(page: ft.Page):
         value="BTCUSD",
         bgcolor=GLASS,
         border_color=PURPLE,
-        color=ft.Colors.WHITE,
+        color=WHITE,
         label="الأصل",
         label_style=ft.TextStyle(color=PURPLE),
         on_change=on_symbol_change,
@@ -397,7 +340,7 @@ async def main(page: ft.Page):
         value="15m",
         bgcolor=GLASS,
         border_color=PURPLE,
-        color=ft.Colors.WHITE,
+        color=WHITE,
         label="الفريم",
         label_style=ft.TextStyle(color=PURPLE),
         on_change=on_tf_change,
@@ -405,18 +348,18 @@ async def main(page: ft.Page):
 
     dashboard_view = ft.Column(
         [
-            ft.Container(height=20),
+            ft.Container(height=10),
             ft.Text("DASHBOARD", size=18, color=CYAN, weight=ft.FontWeight.BOLD),
             glass_card(
                 ft.Column(
                     [
-                        ft.Text("Balance", size=12, color=ft.Colors.WHITE54),
+                        ft.Text("Balance", size=12, color=WHITE_54),
                         balance_txt,
                         ft.Row(
                             [
-                                ft.Text("Equity", size=12, color=ft.Colors.WHITE54),
+                                ft.Text("Equity", size=12, color=WHITE_54),
                                 equity_txt,
-                                ft.Text("P/L", size=12, color=ft.Colors.WHITE54),
+                                ft.Text("P/L", size=12, color=WHITE_54),
                                 pl_txt,
                             ],
                             spacing=20,
@@ -429,7 +372,7 @@ async def main(page: ft.Page):
             glass_card(
                 ft.Column(
                     [
-                        ft.Text("AI SIGNAL", size=12, color=ft.Colors.WHITE54),
+                        ft.Text("AI SIGNAL", size=12, color=WHITE_54),
                         signal_gauge,
                         neon_button("تحليل الآن", CYAN, analyze_now, width=160),
                     ],
@@ -448,7 +391,7 @@ async def main(page: ft.Page):
             glass_card(
                 ft.Column(
                     [
-                        ft.Text("LIVE TERMINAL", size=12, color=ft.Colors.WHITE54),
+                        ft.Text("LIVE TERMINAL", size=12, color=WHITE_54),
                         log_list,
                     ],
                     spacing=8,
@@ -460,28 +403,75 @@ async def main(page: ft.Page):
         expand=True,
     )
 
-    # ---------- التنقل ----------
-    def route_change(e):
-        page.views.clear()
-        if page.route == "/dashboard":
-            page.views.append(
-                ft.View("/dashboard", [dashboard_view], bgcolor=BG, padding=20)
-            )
+    # ---------- شاشة تسجيل الدخول ----------
+    acc_field = ft.TextField(
+        label="MT5 Account ID",
+        bgcolor=GLASS,
+        border_color=CYAN,
+        color=WHITE,
+        label_style=ft.TextStyle(color=CYAN),
+    )
+    pass_field = ft.TextField(
+        label="Password",
+        password=True,
+        can_reveal_password=True,
+        bgcolor=GLASS,
+        border_color=CYAN,
+        color=WHITE,
+        label_style=ft.TextStyle(color=CYAN),
+    )
+    server_dd = ft.Dropdown(
+        label="Server",
+        options=[
+            ft.dropdown.Option("Headway-Real"),
+            ft.dropdown.Option("Headway-Demo"),
+            ft.dropdown.Option("Custom Server"),
+        ],
+        value="Headway-Demo",
+        bgcolor=GLASS,
+        border_color=CYAN,
+        color=WHITE,
+        label_style=ft.TextStyle(color=CYAN),
+    )
+    status_text = ft.Text("", color=CYAN, size=12)
+
+    async def on_connect(e):
+        status_text.value = "⏳ جاري الاتصال الآمن..."
+        page.update()
+        ok = await connect_mt5(acc_field.value, pass_field.value, server_dd.value)
+        if ok:
+            status_text.value = "✅ متصل"
+            page.controls.clear()
+            page.controls.append(dashboard_view)
+            page.update()
             asyncio.create_task(refresh_account())
         else:
-            page.views.append(ft.View("/", [login_view], bgcolor=BG, padding=20))
-        page.update()
+            status_text.value = "❌ تحقق من البيانات أو التوكن"
+            page.update()
 
-    page.on_route_change = route_change
-    page.add(splash)
+    login_view = ft.Column(
+        [
+            ft.Container(height=40),
+            ft.Text("SECURE ACCESS", size=22, color=PURPLE, weight=ft.FontWeight.BOLD),
+            ft.Text("ربط حساب MetaTrader 5", size=13, color=WHITE_54),
+            acc_field,
+            pass_field,
+            server_dd,
+            neon_button("اتصال آمن وتفعيل المحرك", CYAN, on_connect, width=260),
+            status_text,
+        ],
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        spacing=16,
+    )
 
-    async def go_login():
-        await asyncio.sleep(2.5)
-        page.views.clear()
-        page.views.append(ft.View("/", [login_view], bgcolor=BG, padding=20))
-        page.update()
+    # ---------- تشغيل شاشة البداية ثم الدخول ----------
+    page.controls.append(splash)
+    page.update()
 
-    asyncio.create_task(go_login())
+    await asyncio.sleep(2.5)
+    page.controls.clear()
+    page.controls.append(login_view)
+    page.update()
 
 
 if __name__ == "__main__":
