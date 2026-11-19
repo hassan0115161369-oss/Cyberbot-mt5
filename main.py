@@ -18,7 +18,7 @@ WHITE = "#FFFFFF"
 WHITE_70 = "#B3FFFFFF"
 WHITE_54 = "#8AFFFFFF"
 
-METAAPI_TOKEN = os.getenv("METAAPI_TOKEN", "ضع_التوكن_هنا")
+DEFAULT_TOKEN = os.getenv("METAAPI_TOKEN", "")
 
 
 # ==================== دوال المؤشرات الفنية ====================
@@ -154,18 +154,24 @@ def add_log(msg):
 
 
 # ==================== منطق MetaApi ====================
-async def connect_mt5(account_id, password, server):
-    try:
-        if not METAAPI_TOKEN or METAAPI_TOKEN == "ضع_التوكن_هنا":
-            add_log("❌ يرجى ضبط متغير البيئة METAAPI_TOKEN أولاً")
-            return False
+async def connect_mt5(token, account_id, password, server):
+    token = (token or "").strip()
+    account_id = (account_id or "").strip()
+    password = (password or "").strip()
+    server = (server or "").strip()
 
-        state.api = MetaApi(METAAPI_TOKEN)
+    if not token:
+        return False, "❌ يرجى إدخال MetaApi Token أولاً"
+    if not account_id or not password:
+        return False, "❌ يرجى إدخال رقم الحساب وكلمة المرور"
+
+    try:
+        state.api = MetaApi(token)
         state.account = await state.api.metatrader_account_api.create_account(
             {
                 "name": f"CyberBot-{account_id}",
                 "type": "cloud",
-                "login": str(account_id).strip(),
+                "login": account_id,
                 "password": password,
                 "server": server,
                 "platform": "mt5",
@@ -177,10 +183,11 @@ async def connect_mt5(account_id, password, server):
         await state.connection.connect()
         await state.connection.wait_synchronized()
         add_log(f"✅ تم الاتصال بالحساب {account_id} على {server}")
-        return True
+        return True, "✅ متصل بنجاح"
     except Exception as e:
-        add_log(f"❌ فشل الاتصال: {e}")
-        return False
+        err_msg = f"❌ فشل الاتصال: {e}"
+        add_log(err_msg)
+        return False, err_msg
 
 
 async def fetch_candles(symbol, timeframe="15m", limit=200):
@@ -400,6 +407,16 @@ async def main(page: ft.Page):
     )
 
     # ---------- شاشة تسجيل الدخول ----------
+    token_field = ft.TextField(
+        label="MetaApi Token",
+        value=DEFAULT_TOKEN,
+        password=True,
+        can_reveal_password=True,
+        bgcolor=GLASS,
+        border_color=PURPLE,
+        color=WHITE,
+        label_style=ft.TextStyle(color=PURPLE),
+    )
     acc_field = ft.TextField(
         label="MT5 Account ID",
         bgcolor=GLASS,
@@ -429,27 +446,42 @@ async def main(page: ft.Page):
         color=WHITE,
         label_style=ft.TextStyle(color=CYAN),
     )
-    status_text = ft.Text("", color=CYAN, size=12)
+    status_text = ft.Text(
+        "",
+        color=CYAN,
+        size=12,
+        text_align=ft.TextAlign.CENTER,
+        selectable=True,
+    )
 
     async def on_connect(e):
-        status_text.value = "⏳ جاري الاتصال الآمن..."
+        status_text.color = CYAN
+        status_text.value = "⏳ جاري الاتصال الآمن بـ MetaApi..."
         page.update()
-        ok = await connect_mt5(acc_field.value, pass_field.value, server_dd.value)
+        ok, message = await connect_mt5(
+            token_field.value,
+            acc_field.value,
+            pass_field.value,
+            server_dd.value,
+        )
         if ok:
-            status_text.value = "✅ متصل"
+            status_text.color = GREEN
+            status_text.value = message
             page.controls.clear()
             page.controls.append(dashboard_view)
             page.update()
             asyncio.create_task(refresh_account())
         else:
-            status_text.value = "❌ تحقق من البيانات أو التوكن"
+            status_text.color = RED
+            status_text.value = message
             page.update()
 
     login_view = ft.Column(
         [
-            ft.Container(height=40),
+            ft.Container(height=24),
             ft.Text("SECURE ACCESS", size=22, color=PURPLE, weight=ft.FontWeight.BOLD),
             ft.Text("ربط حساب MetaTrader 5", size=13, color=WHITE_54),
+            token_field,
             acc_field,
             pass_field,
             server_dd,
@@ -457,7 +489,9 @@ async def main(page: ft.Page):
             status_text,
         ],
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        spacing=16,
+        spacing=14,
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
     )
 
     # ---------- تشغيل شاشة البداية ثم الدخول ----------
