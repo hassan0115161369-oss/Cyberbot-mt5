@@ -125,7 +125,7 @@ def neon_button(text, color, on_click, width=140, height=52):
         content=ft.Text(text, color=BG, weight=ft.FontWeight.BOLD, size=15),
         width=width,
         height=height,
-        alignment=ft.alignment.center,
+        alignment=ft.Alignment(0, 0),
         bgcolor=color,
         border_radius=14,
         shadow=ft.BoxShadow(blur_radius=20, color=color, spread_radius=2),
@@ -236,7 +236,7 @@ async def trading_loop():
 
 
 # ==================== واجهة Flet ====================
-def main(page: ft.Page):
+async def main(page: ft.Page):
     state.page = page
     page.title = "CyberBot MT5"
     page.bgcolor = BG
@@ -485,4 +485,4 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    ft.run(main)
