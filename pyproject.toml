@@ -2,10 +2,15 @@
 name = "cyberbot-mt5"
 version = "1.0.0"
 description = "CyberBot MT5 - AI Trading Bot"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "flet",
     "metaapi-cloud-sdk",
+]
+
+[dependency-groups]
+dev = [
+    "flet-cli",
 ]
 
 [tool.flet]
