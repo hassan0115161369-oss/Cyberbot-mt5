@@ -1,10 +1,10 @@
-[project]
+غ٩٩[project]
 name = "cyberbot-mt5"
 version = "1.0.0"
 description = "CyberBot MT5 - AI Trading Bot"
 requires-python = ">=3.12"
 dependencies = [
-    "flet",
+    "flet==0.25.0",
     "metaapi-cloud-sdk",
     "pandas",
     "numpy"
