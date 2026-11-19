@@ -59,7 +59,6 @@ async def analyze_signal(closes):
     price = closes[-1]
 
     score = 0
-    # شروط الشراء
     if rsi < 35:
         score += 25
     if macd > 0:
@@ -69,7 +68,6 @@ async def analyze_signal(closes):
     if ema50 > ema200:
         score += 25
 
-    # شروط البيع
     if rsi > 65:
         score -= 25
     if macd < 0:
@@ -96,11 +94,9 @@ class AppState:
         self.symbol = "BTCUSD"
         self.timeframe = "15m"
         self.lot = 0.01
-        self.max_trades = 3
-        self.daily_loss_limit = 50.0
         self.logs = []
-        self.page: ft.Page | None = None
-        self.log_list: ft.ListView | None = None
+        self.page = None
+        self.log_list = None
 
 
 state = AppState()
@@ -116,7 +112,10 @@ def glass_card(content, padding=16, border_color=BORDER):
         border_radius=18,
         blur=ft.Blur(10, 10, ft.BlurStyle.NORMAL),
         shadow=ft.BoxShadow(
-            blur_radius=18, color=PURPLE, offset=ft.Offset(0, 0), spread_radius=1
+            blur_radius=18,
+            color=PURPLE,
+            offset=ft.Offset(0, 0),
+            spread_radius=1,
         ),
     )
 
@@ -138,8 +137,7 @@ def neon_button(text, color, on_click, width=140, height=52):
 
 def add_log(msg):
     stamp = datetime.now().strftime("%H:%M:%S")
-    line = f"[{stamp}] {msg}"
-    state.logs.insert(0, line)
+    state.logs.insert(0, f"[{stamp}] {msg}")
     if len(state.logs) > 50:
         state.logs.pop()
 
@@ -159,15 +157,17 @@ async def connect_mt5(account_id, password, server):
             return False
 
         state.api = MetaApi(METAAPI_TOKEN)
-        state.account = await state.api.metatrader_account_api.create_account({
-            "name": f"CyberBot-{account_id}",
-            "type": "cloud",
-            "login": str(account_id).strip(),
-            "password": password,
-            "server": server,
-            "platform": "mt5",
-            "magic": 202500,
-        })
+        state.account = await state.api.metatrader_account_api.create_account(
+            {
+                "name": f"CyberBot-{account_id}",
+                "type": "cloud",
+                "login": str(account_id).strip(),
+                "password": password,
+                "server": server,
+                "platform": "mt5",
+                "magic": 202500,
+            }
+        )
         await state.account.deploy()
         state.connection = state.account.get_streaming_connection()
         await state.connection.connect()
@@ -206,7 +206,7 @@ async def execute_trade(signal, confidence):
                 take_profit=round(ask * 1.02, 5),
                 options={"comment": "CyberBot BUY"},
             )
-            add_log(f"🟢 فتح صفقة شراء {state.symbol} لوت {state.lot} - ثقة {confidence}%")
+            add_log(f"🟢 شراء {state.symbol} لوت {state.lot} - ثقة {confidence}%")
         elif signal == "SELL" and bid > 0:
             await state.connection.create_market_sell_order(
                 state.symbol,
@@ -215,7 +215,7 @@ async def execute_trade(signal, confidence):
                 take_profit=round(bid * 0.98, 5),
                 options={"comment": "CyberBot SELL"},
             )
-            add_log(f"🔴 فتح صفقة بيع {state.symbol} لوت {state.lot} - ثقة {confidence}%")
+            add_log(f"🔴 بيع {state.symbol} لوت {state.lot} - ثقة {confidence}%")
     except Exception as e:
         add_log(f"⚠️ فشل تنفيذ الصفقة: {e}")
 
@@ -231,7 +231,7 @@ async def trading_loop():
                     await execute_trade(signal, confidence)
             await asyncio.sleep(15)
         except Exception as e:
-            add_log(f"خطأ في الحلقة: {e}")
+            add_log(f"⚠️ خطأ في الحلقة: {e}")
             await asyncio.sleep(5)
 
 
@@ -242,10 +242,6 @@ def main(page: ft.Page):
     page.bgcolor = BG
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
-    page.fonts = {
-        "Orbitron": "https://fonts.gstatic.com/s/orbitron/v25/yMJRMIlzdpvBhQQL_Qq7dys.woff2"
-    }
-    page.theme = ft.Theme(font_family="Orbitron")
 
     # ---------- شاشة البداية ----------
     splash = ft.Column(
@@ -254,7 +250,7 @@ def main(page: ft.Page):
             ft.Icon(ft.Icons.BOLT, size=80, color=GOLD),
             ft.Text("CYBERBOT MT5", size=28, color=CYAN, weight=ft.FontWeight.BOLD),
             ft.Text(
-                "جاري الاتصال بخوادم السيولة العالمية والذكاء الاصطناعي...",
+                "جاري الاتصال بخوادم السيولة والذكاء الاصطناعي...",
                 size=13,
                 color=ft.Colors.WHITE70,
                 text_align=ft.TextAlign.CENTER,
@@ -368,7 +364,7 @@ def main(page: ft.Page):
             sig, conf = await analyze_signal(closes)
             signal_gauge.value = f"{sig} {conf}%"
             signal_gauge.color = GREEN if sig == "BUY" else RED if sig == "SELL" else CYAN
-            add_log(f"📊 نتيجة التحليل الفوري ({state.symbol} - {state.timeframe}): {sig} ({conf}%)")
+            add_log(f"📊 تحليل فوري ({state.symbol} - {state.timeframe}): {sig} ({conf}%)")
             page.update()
 
     def on_symbol_change(e):
@@ -392,8 +388,101 @@ def main(page: ft.Page):
         label_style=ft.TextStyle(color=PURPLE),
         on_change=on_symbol_change,
     )
+
     tf_dd = ft.Dropdown(
-        options=[ft.dropdown.Option(t) for t in ["1m", "15m", "1h", "4h", "1w", "1M"]],
+        options=[
+            ft.dropdown.Option(t)
+            for t in ["1m", "15m", "1h", "4h", "1w", "1M"]
+        ],
         value="15m",
         bgcolor=GLASS,
-        border
+        border_color=PURPLE,
+        color=ft.Colors.WHITE,
+        label="الفريم",
+        label_style=ft.TextStyle(color=PURPLE),
+        on_change=on_tf_change,
+    )
+
+    dashboard_view = ft.Column(
+        [
+            ft.Container(height=20),
+            ft.Text("DASHBOARD", size=18, color=CYAN, weight=ft.FontWeight.BOLD),
+            glass_card(
+                ft.Column(
+                    [
+                        ft.Text("Balance", size=12, color=ft.Colors.WHITE54),
+                        balance_txt,
+                        ft.Row(
+                            [
+                                ft.Text("Equity", size=12, color=ft.Colors.WHITE54),
+                                equity_txt,
+                                ft.Text("P/L", size=12, color=ft.Colors.WHITE54),
+                                pl_txt,
+                            ],
+                            spacing=20,
+                        ),
+                    ],
+                    spacing=6,
+                )
+            ),
+            ft.Row([symbol_dd, tf_dd], spacing=12),
+            glass_card(
+                ft.Column(
+                    [
+                        ft.Text("AI SIGNAL", size=12, color=ft.Colors.WHITE54),
+                        signal_gauge,
+                        neon_button("تحليل الآن", CYAN, analyze_now, width=160),
+                    ],
+                    spacing=10,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                )
+            ),
+            ft.Row(
+                [
+                    neon_button("START BOT", GREEN, start_bot, width=140),
+                    neon_button("STOP BOT", RED, stop_bot, width=140),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                spacing=20,
+            ),
+            glass_card(
+                ft.Column(
+                    [
+                        ft.Text("LIVE TERMINAL", size=12, color=ft.Colors.WHITE54),
+                        log_list,
+                    ],
+                    spacing=8,
+                )
+            ),
+        ],
+        spacing=16,
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
+    )
+
+    # ---------- التنقل ----------
+    def route_change(e):
+        page.views.clear()
+        if page.route == "/dashboard":
+            page.views.append(
+                ft.View("/dashboard", [dashboard_view], bgcolor=BG, padding=20)
+            )
+            asyncio.create_task(refresh_account())
+        else:
+            page.views.append(ft.View("/", [login_view], bgcolor=BG, padding=20))
+        page.update()
+
+    page.on_route_change = route_change
+    page.add(splash)
+
+    async def go_login():
+        await asyncio.sleep(2.5)
+        page.views.clear()
+        page.views.append(ft.View("/", [login_view], bgcolor=BG, padding=20))
+        page.update()
+
+    asyncio.create_task(go_login())
+
+
+if __name__ == "__main__":
+    ft.app(target=main)
