@@ -22,6 +22,8 @@ jobs:
         with:
           target: apk
           working-directory: .
+          runner-python-version: "3.12"
+          bundled-python-version: "3.12"
         env:
           METAAPI_TOKEN: ${{ secrets.METAAPI_TOKEN }}
 
