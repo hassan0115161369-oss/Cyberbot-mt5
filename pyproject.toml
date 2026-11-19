@@ -1,0 +1,22 @@
+[project]
+name = "cyberbot-mt5"
+version = "1.0.0"
+description = "CyberBot MT5 - AI Trading Bot"
+requires-python = ">=3.12"
+dependencies = [
+    "flet>=0.25.0",
+    "metaapi-cloud-sdk>=29.3.0",
+    "pandas>=2.0.0",
+    "numpy>=1.26.0",
+]
+
+[tool.flet]
+org = "com.cyberbot.mt5"
+product = "CyberBot MT5"
+
+[tool.flet.app]
+path = "."
+
+[tool.flet.android]
+extract_packages = ["numpy", "pandas", "metaapi_cloud_sdk"]
+target_arch = ["arm64-v8a", "armeabi-v7a", "x86_64"]
