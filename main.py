@@ -224,9 +224,11 @@ async def execute_trade(signal, confidence):
         add_log(f"⚠️ فشل تنفيذ الصفقة: {e}")
 
 
-async def trading_loop():
+async def trading_loop(symbol_dd, tf_dd):
     while state.running:
         try:
+            state.symbol = symbol_dd.value or "BTCUSD"
+            state.timeframe = tf_dd.value or "15m"
             closes = await fetch_candles(state.symbol, state.timeframe)
             if closes:
                 signal, confidence = await analyze_signal(closes)
@@ -273,6 +275,34 @@ async def main(page: ft.Page):
     log_list = ft.ListView(expand=True, spacing=4, height=140)
     state.log_list = log_list
 
+    symbol_dd = ft.Dropdown(
+        options=[
+            ft.dropdown.Option(s)
+            for s in ["BTCUSD", "ETHUSD", "XAUUSD", "EURUSD", "US30"]
+        ],
+        value="BTCUSD",
+        bgcolor=GLASS,
+        border_color=PURPLE,
+        color=WHITE,
+        label="الأصل",
+        label_style=ft.TextStyle(color=PURPLE),
+        expand=True,
+    )
+
+    tf_dd = ft.Dropdown(
+        options=[
+            ft.dropdown.Option(t)
+            for t in ["1m", "15m", "1h", "4h", "1w", "1M"]
+        ],
+        value="15m",
+        bgcolor=GLASS,
+        border_color=PURPLE,
+        color=WHITE,
+        label="الفريم",
+        label_style=ft.TextStyle(color=PURPLE),
+        expand=True,
+    )
+
     async def refresh_account():
         if state.connection:
             try:
@@ -295,13 +325,15 @@ async def main(page: ft.Page):
             return
         state.running = True
         add_log("🚀 تم تفعيل محرك التداول الآلي")
-        asyncio.create_task(trading_loop())
+        asyncio.create_task(trading_loop(symbol_dd, tf_dd))
 
     def stop_bot(e):
         state.running = False
         add_log("⏹️ تم إيقاف البوت")
 
     async def analyze_now(e):
+        state.symbol = symbol_dd.value or "BTCUSD"
+        state.timeframe = tf_dd.value or "15m"
         closes = await fetch_candles(state.symbol, state.timeframe)
         if closes:
             sig, conf = await analyze_signal(closes)
@@ -309,42 +341,6 @@ async def main(page: ft.Page):
             signal_gauge.color = GREEN if sig == "BUY" else RED if sig == "SELL" else CYAN
             add_log(f"📊 تحليل فوري ({state.symbol} - {state.timeframe}): {sig} ({conf}%)")
             page.update()
-
-    def on_symbol_change(e):
-        state.symbol = e.control.value
-        add_log(f"💱 تم تغيير الأصل إلى {state.symbol}")
-
-    def on_tf_change(e):
-        state.timeframe = e.control.value
-        add_log(f"⏱️ تم تغيير الفريم إلى {state.timeframe}")
-
-    symbol_dd = ft.Dropdown(
-        options=[
-            ft.dropdown.Option(s)
-            for s in ["BTCUSD", "ETHUSD", "XAUUSD", "EURUSD", "US30"]
-        ],
-        value="BTCUSD",
-        bgcolor=GLASS,
-        border_color=PURPLE,
-        color=WHITE,
-        label="الأصل",
-        label_style=ft.TextStyle(color=PURPLE),
-        on_change=on_symbol_change,
-    )
-
-    tf_dd = ft.Dropdown(
-        options=[
-            ft.dropdown.Option(t)
-            for t in ["1m", "15m", "1h", "4h", "1w", "1M"]
-        ],
-        value="15m",
-        bgcolor=GLASS,
-        border_color=PURPLE,
-        color=WHITE,
-        label="الفريم",
-        label_style=ft.TextStyle(color=PURPLE),
-        on_change=on_tf_change,
-    )
 
     dashboard_view = ft.Column(
         [
