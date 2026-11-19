@@ -33,8 +33,8 @@ jobs:
       - name: Build Android APK with Flet
         uses: flet-dev/flet-build-action@v1
         with:
-          build-command: apk
-          project-dir: .
+          target: apk
+          working-directory: .
         env:
           METAAPI_TOKEN: ${{ secrets.METAAPI_TOKEN }}
 
