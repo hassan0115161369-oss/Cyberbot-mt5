@@ -57,7 +57,9 @@ class TickerAllClient:
 
     async def get_candles(self, symbol: str, timeframe: str = "15m", limit: int = 200):
         params = {"symbol": symbol, "timeframe": timeframe, "limit": limit}
-        resp = await self.client.get(f"/accounts/{self.account_id}/candles", params=params)
+        resp = await self.client.get(
+            f"/accounts/{self.account_id}/candles", params=params
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -85,7 +87,9 @@ class TickerAllClient:
             "tp": tp,
             "comment": comment,
         }
-        resp = await self.client.post(f"/accounts/{self.account_id}/orders", json=payload)
+        resp = await self.client.post(
+            f"/accounts/{self.account_id}/orders", json=payload
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -180,7 +184,7 @@ def glass_card(content, padding=16, border_color=BORDER):
         content=content,
         padding=padding,
         bgcolor=GLASS_ALPHA,
-        border=ft.border.all(1, border_color),
+        border=ft.Border.all(1, border_color),
         border_radius=18,
         blur=ft.Blur(10, 10, ft.BlurStyle.NORMAL),
         shadow=ft.BoxShadow(
@@ -297,7 +301,9 @@ async def trading_loop(symbol_dd, tf_dd):
             closes = await fetch_candles(state.symbol, state.timeframe)
             if closes:
                 signal, confidence = await analyze_signal(closes)
-                add_log(f"🔍 فحص {state.symbol} {state.timeframe}: {signal} ({confidence}%)")
+                add_log(
+                    f"🔍 فحص {state.symbol} {state.timeframe}: {signal} ({confidence}%)"
+                )
                 if signal != "NEUTRAL" and confidence >= 70:
                     await execute_trade(signal, confidence)
             await asyncio.sleep(15)
@@ -563,4 +569,4 @@ async def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    ft.app(main)
+    ft.run(main)
