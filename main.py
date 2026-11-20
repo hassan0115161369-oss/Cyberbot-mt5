@@ -1,5 +1,6 @@
 import asyncio
 import os
+import random
 import uuid
 from datetime import datetime
 import flet as ft
@@ -34,6 +35,15 @@ DEFAULT_API_KEY = os.getenv("TICKERALL_API_KEY", "")
 TICKERALL_BASE_URL = os.getenv("TICKERALL_BASE_URL", "https://api.tickerall.com/v1")
 
 TF_MAP = {"1m": "M1", "5m": "M5", "15m": "M15", "30m": "M30", "1h": "H1", "4h": "H4"}
+
+# أسعار ابتدائية لوضع المحاكاة عند عدم الاتصال بالوسيط
+SIM_BASE_PRICES = {
+    "XAUUSD": 2650.0,
+    "BTCUSD": 92000.0,
+    "EURUSD": 1.0850,
+    "GBPUSD": 1.2700,
+    "US30": 43500.0,
+}
 
 # ==================== دعم اللغتين العربية والإنجليزية ====================
 TEXTS = {
@@ -189,6 +199,7 @@ class AppState:
         self.profit = 0.0
 
         self.sim_positions = []
+        self.sim_candles_cache: dict[str, list[dict]] = {}
         self.last_analysis = {}
         self.last_candles = []
         self.logs = []
@@ -197,6 +208,36 @@ class AppState:
 
 
 state = AppState()
+
+
+# ==================== مولّد شموع المحاكاة ====================
+def get_simulated_candles(symbol: str, count: int = 80) -> list[dict]:
+    base = SIM_BASE_PRICES.get(symbol, 100.0)
+    step = base * 0.0008
+    candles = state.sim_candles_cache.get(symbol)
+
+    if not candles:
+        candles = []
+        price = base
+        for _ in range(count):
+            o = price
+            c = o + random.uniform(-step, step)
+            h = max(o, c) + random.uniform(0, step * 0.5)
+            l = min(o, c) - random.uniform(0, step * 0.5)
+            candles.append({"open": o, "high": h, "low": l, "close": c, "volume": random.randint(50, 500)})
+            price = c
+        state.sim_candles_cache[symbol] = candles
+    else:
+        last_close = candles[-1]["close"]
+        o = last_close
+        c = o + random.uniform(-step, step)
+        h = max(o, c) + random.uniform(0, step * 0.5)
+        l = min(o, c) - random.uniform(0, step * 0.5)
+        candles.append({"open": o, "high": h, "low": l, "close": c, "volume": random.randint(50, 500)})
+        if len(candles) > 200:
+            candles.pop(0)
+
+    return candles
 
 
 # ==================== عناصر الواجهة المساعدة ====================
@@ -322,7 +363,8 @@ async def main(page: ft.Page):
                     await state.client.reconnect()
                 except Exception:
                     pass
-        return []
+        # في وضع المحاكاة بدون اتصال بالوسيط، نستخدم شموع محاكاة واقعية
+        return get_simulated_candles(symbol)
 
     async def execute_trade(side: str, price: float, atr: float, tag: str = "AI"):
         if price <= 0:
@@ -341,7 +383,6 @@ async def main(page: ft.Page):
         tp = round(price + tp_dist if side == "BUY" else price - tp_dist, digits)
 
         if not state.live_trading_enabled:
-            # وضع المحاكاة الآمن
             pos = {
                 "id": f"SIM-{str(uuid.uuid4())[:6]}",
                 "symbol": state.symbol,
@@ -371,12 +412,16 @@ async def main(page: ft.Page):
         current_tab = {"name": "dashboard"}
         content_holder = ft.Container(expand=True)
 
-        # عناصر مشتركة للتحديث الحي
         bal_txt = ft.Text(f"${state.balance:,.2f}", size=24, color=NEON_GOLD, weight=ft.FontWeight.BOLD)
         eq_txt = ft.Text(f"${state.equity:,.2f}", size=14, color=NEON_CYAN)
         mg_txt = ft.Text(f"${state.free_margin:,.2f}", size=14, color=NEON_PURPLE)
         pl_txt = ft.Text(f"${state.profit:,.2f}", size=14, color=NEON_GREEN)
-        mode_badge = ft.Text(t("live_badge") if state.live_trading_enabled else t("sim_badge"), size=12, color=NEON_RED if state.live_trading_enabled else NEON_GREEN, weight=ft.FontWeight.BOLD)
+        mode_badge = ft.Text(
+            t("live_badge") if state.live_trading_enabled else t("sim_badge"),
+            size=12,
+            color=NEON_RED if state.live_trading_enabled else NEON_GREEN,
+            weight=ft.FontWeight.BOLD,
+        )
         alert_txt = ft.Text("رادار السوق جاهز", size=12, color=NEON_CYAN, expand=True)
         sig_txt = ft.Text("READY ⚡", size=20, color=NEON_CYAN, weight=ft.FontWeight.BOLD)
         chart_box = ft.Container(content=build_neon_chart([]))
@@ -425,22 +470,24 @@ async def main(page: ft.Page):
                 sig_txt.color = NEON_GREEN if res["signal"] == "BUY" else NEON_RED if res["signal"] == "SELL" else NEON_CYAN
                 alert_txt.value = res["alert"]
 
-                # تحديث أرباح صفقات المحاكاة وإدارة Break-Even / Trailing / الانقلاب
                 price = res["price"]
                 for p in list(state.sim_positions):
                     if p["symbol"] == state.symbol:
                         diff = (price - p["entry"]) if p["side"] == "BUY" else (p["entry"] - price)
                         p["profit"] = round(diff * p["volume"] * 100, 2)
-                        # Break Even تلقائي
                         if p["profit"] > 2.0 and p["sl"] != p["entry"]:
                             p["sl"] = p["entry"]
                             add_log(f"🛡️ Break-Even مفعل لصفقة {p['id']}")
-                        # إغلاق فوري عند انقلاب الإشارة
                         if (p["side"] == "BUY" and res["signal"] == "SELL") or (p["side"] == "SELL" and res["signal"] == "BUY"):
                             state.sim_positions.remove(p)
                             state.balance += p["profit"]
                             state.journal.add_trade(p)
                             add_log(f"⚡ إغلاق فوري عند الانقلاب {p['id']} ({p['profit']:+.2f}$)")
+
+                if not state.connected:
+                    state.profit = round(sum(p["profit"] for p in state.sim_positions), 2)
+                    state.equity = round(state.balance + state.profit, 2)
+                    state.free_margin = state.equity
 
                 if auto_trade and res["signal"] in ("BUY", "SELL") and res["confidence"] >= state.active_strategy.get("min_conf", 65):
                     same = [p for p in state.sim_positions if p["symbol"] == state.symbol and p["side"] == res["signal"]]
@@ -483,10 +530,11 @@ async def main(page: ft.Page):
                     state.lot = val
                     add_log(f"💰 حجم اللوت: {val}")
                     render_tab("dashboard")
+
                 lot_row.append(
                     ft.Container(
                         content=ft.Text(str(v), color=BG_DARK if state.lot == v else WHITE, size=12, weight=ft.FontWeight.BOLD),
-                        padding=ft.Padding.symmetric(horizontal=11, vertical=7),
+                        padding=ft.Padding(left=11, top=7, right=11, bottom=7),
                         bgcolor=NEON_GOLD if state.lot == v else BG_GRAD_1,
                         border=ft.Border.all(1, NEON_GOLD),
                         border_radius=8,
@@ -578,8 +626,6 @@ async def main(page: ft.Page):
                         ranked.append((r["confidence"], sym, r))
                 ranked.sort(key=lambda x: x[0], reverse=True)
                 results_col.controls.clear()
-                if not ranked:
-                    results_col.controls.append(ft.Text("⚠️ اتصل بالوسيط أولاً لجلب بيانات الرموز الفعلية.", color=NEON_ORANGE))
                 for conf, sym, r in ranked:
                     col = NEON_GREEN if r["signal"] == "BUY" else NEON_RED if r["signal"] == "SELL" else NEON_CYAN
                     results_col.controls.append(
@@ -909,7 +955,7 @@ async def main(page: ft.Page):
             [
                 ft.Container(
                     content=ft.Row([ft.Icon(ic, size=16, color=NEON_CYAN), ft.Text(t(k), size=11, color=WHITE)], spacing=4),
-                    padding=ft.Padding.symmetric(horizontal=10, vertical=8),
+                    padding=ft.Padding(left=10, top=8, right=10, bottom=8),
                     bgcolor=CARD_BG,
                     border=ft.Border.all(1, NEON_PURPLE),
                     border_radius=10,
@@ -922,6 +968,7 @@ async def main(page: ft.Page):
         )
 
         render_tab("dashboard")
+        asyncio.create_task(refresh_all(auto_trade=False))
         return ft.Container(
             expand=True,
             padding=12,
