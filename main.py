@@ -1,5 +1,6 @@
 import asyncio
 import os
+import uuid
 from datetime import datetime
 import flet as ft
 import httpx
@@ -19,10 +20,22 @@ WHITE_70 = "#B3FFFFFF"
 WHITE_54 = "#8AFFFFFF"
 
 DEFAULT_API_KEY = os.getenv("TICKERALL_API_KEY", "")
-TICKERALL_BASE_URL = os.getenv("TICKERALL_BASE_URL", "https://api.tickerall.com/v1")
+TICKERALL_BASE_URL = "https://api.tickerall.com/v1"
+
+TF_MAP = {
+    "1m": "M1",
+    "5m": "M5",
+    "15m": "M15",
+    "30m": "M30",
+    "1h": "H1",
+    "4h": "H4",
+    "1d": "D1",
+    "1w": "W1",
+    "1M": "MN1",
+}
 
 
-# ==================== عميل TickerAll API ====================
+# ==================== عميل TickerAll API الرسمي ====================
 class TickerAllClient:
     def __init__(self, api_key: str, base_url: str = TICKERALL_BASE_URL):
         self.api_key = api_key.strip()
@@ -34,41 +47,41 @@ class TickerAllClient:
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             },
-            timeout=20.0,
+            timeout=25.0,
         )
 
     async def connect(self, login: str, password: str, server: str):
+        acc_num = int(login) if login.isdigit() else login
         payload = {
-            "login": login,
-            "password": password,
+            "broker": "mt5",
             "server": server,
-            "platform": "mt5",
+            "account": acc_num,
+            "password": password,
+            "terminalType": "MOBILE",
         }
-        resp = await self.client.post("/accounts/connect", json=payload)
+        resp = await self.client.post("/sessions", json=payload)
         resp.raise_for_status()
         data = resp.json()
-        self.account_id = data.get("account_id") or login
+        self.account_id = data.get("accountId") or data.get("id")
+        if not self.account_id:
+            raise ValueError(f"لم يتم استلام accountId من الخادم: {data}")
         return data
 
     async def get_account_info(self):
-        resp = await self.client.get(f"/accounts/{self.account_id}/info")
+        resp = await self.client.get(f"/accounts/{self.account_id}")
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        return data.get("account", data)
 
-    async def get_candles(self, symbol: str, timeframe: str = "15m", limit: int = 200):
-        params = {"symbol": symbol, "timeframe": timeframe, "limit": limit}
+    async def get_candles(self, symbol: str, timeframe: str = "15m", hours: int = 120):
+        tf = TF_MAP.get(timeframe, "M15")
+        params = {"symbol": symbol, "timeframe": tf, "hours": hours}
         resp = await self.client.get(
             f"/accounts/{self.account_id}/candles", params=params
         )
         resp.raise_for_status()
-        return resp.json()
-
-    async def get_price(self, symbol: str):
-        resp = await self.client.get(
-            f"/accounts/{self.account_id}/price", params={"symbol": symbol}
-        )
-        resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        return data if isinstance(data, list) else data.get("candles", [])
 
     async def place_order(
         self,
@@ -80,6 +93,7 @@ class TickerAllClient:
         comment: str = "CyberBot",
     ):
         payload = {
+            "type": "market",
             "symbol": symbol,
             "side": side,  # "BUY" or "SELL"
             "volume": volume,
@@ -87,8 +101,11 @@ class TickerAllClient:
             "tp": tp,
             "comment": comment,
         }
+        headers = {"Idempotency-Key": str(uuid.uuid4())}
         resp = await self.client.post(
-            f"/accounts/{self.account_id}/orders", json=payload
+            f"/accounts/{self.account_id}/orders",
+            json=payload,
+            headers=headers,
         )
         resp.raise_for_status()
         return resp.json()
@@ -243,6 +260,11 @@ async def connect_mt5(api_key, account_id, password, server):
         state.connected = True
         add_log(f"✅ تم الاتصال عبر TickerAll بالحساب {account_id} على {server}")
         return True, "✅ متصل بنجاح عبر TickerAll"
+    except httpx.HTTPStatusError as e:
+        state.connected = False
+        err_msg = f"❌ رفض الخادم ({e.response.status_code}): {e.response.text}"
+        add_log(err_msg)
+        return False, err_msg
     except Exception as e:
         state.connected = False
         err_msg = f"❌ فشل الاتصال: {e}"
@@ -250,42 +272,38 @@ async def connect_mt5(api_key, account_id, password, server):
         return False, err_msg
 
 
-async def fetch_candles(symbol, timeframe="15m", limit=200):
+async def fetch_candles(symbol, timeframe="15m"):
     if not state.connected or not state.client:
         return []
     try:
-        candles = await state.client.get_candles(symbol, timeframe, limit)
+        candles = await state.client.get_candles(symbol, timeframe)
         return [float(c["close"]) for c in candles if "close" in c]
     except Exception as e:
         add_log(f"⚠️ تعذر جلب الشموع: {e}")
         return []
 
 
-async def execute_trade(signal, confidence):
-    if not state.connected or not state.client:
+async def execute_trade(signal, confidence, last_price):
+    if not state.connected or not state.client or last_price <= 0:
         return
     try:
-        price_data = await state.client.get_price(state.symbol)
-        ask = float(price_data.get("ask") or 0.0)
-        bid = float(price_data.get("bid") or 0.0)
-
-        if signal == "BUY" and ask > 0:
+        if signal == "BUY":
             await state.client.place_order(
                 symbol=state.symbol,
                 side="BUY",
                 volume=state.lot,
-                sl=round(ask * 0.99, 5),
-                tp=round(ask * 1.02, 5),
+                sl=round(last_price * 0.99, 5),
+                tp=round(last_price * 1.02, 5),
                 comment="CyberBot BUY",
             )
             add_log(f"🟢 شراء {state.symbol} لوت {state.lot} - ثقة {confidence}%")
-        elif signal == "SELL" and bid > 0:
+        elif signal == "SELL":
             await state.client.place_order(
                 symbol=state.symbol,
                 side="SELL",
                 volume=state.lot,
-                sl=round(bid * 1.01, 5),
-                tp=round(bid * 0.98, 5),
+                sl=round(last_price * 1.01, 5),
+                tp=round(last_price * 0.98, 5),
                 comment="CyberBot SELL",
             )
             add_log(f"🔴 بيع {state.symbol} لوت {state.lot} - ثقة {confidence}%")
@@ -305,7 +323,7 @@ async def trading_loop(symbol_dd, tf_dd):
                     f"🔍 فحص {state.symbol} {state.timeframe}: {signal} ({confidence}%)"
                 )
                 if signal != "NEUTRAL" and confidence >= 70:
-                    await execute_trade(signal, confidence)
+                    await execute_trade(signal, confidence, closes[-1])
             await asyncio.sleep(15)
         except Exception as e:
             add_log(f"⚠️ خطأ في الحلقة: {e}")
