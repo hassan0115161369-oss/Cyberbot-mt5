@@ -1,7 +1,7 @@
 [project]
 name = "cyberbot-mt5"
-version = "1.0.0"
-description = "CyberBot MT5 - AI Trading Bot powered by TickerAll"
+version = "4.0.0"
+description = "CYBERBOT MT5 PRO v4.0 ULTIMATE AI - Powered by TickerAll"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "flet",
@@ -15,7 +15,7 @@ dev = [
 
 [tool.flet]
 org = "com.cyberbot.mt5"
-product = "CyberBot MT5"
+product = "CyberBot MT5 Pro"
 
 [tool.flet.app]
 path = "."
