@@ -1,11 +1,11 @@
 [project]
 name = "cyberbot-mt5"
 version = "1.0.0"
-description = "CyberBot MT5 - AI Trading Bot"
+description = "CyberBot MT5 - AI Trading Bot powered by TickerAll"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "flet",
-    "metaapi-cloud-sdk",
+    "httpx",
 ]
 
 [dependency-groups]
@@ -21,5 +21,4 @@ product = "CyberBot MT5"
 path = "."
 
 [tool.flet.android]
-extract_packages = ["metaapi_cloud_sdk"]
 target_arch = ["arm64-v8a", "armeabi-v7a", "x86_64"]
