@@ -486,7 +486,7 @@ async def main(page: ft.Page):
                 lot_row.append(
                     ft.Container(
                         content=ft.Text(str(v), color=BG_DARK if state.lot == v else WHITE, size=12, weight=ft.FontWeight.BOLD),
-                        padding=ft.padding.symmetric(horizontal=11, vertical=7),
+                        padding=ft.Padding.symmetric(horizontal=11, vertical=7),
                         bgcolor=NEON_GOLD if state.lot == v else BG_GRAD_1,
                         border=ft.Border.all(1, NEON_GOLD),
                         border_radius=8,
@@ -909,7 +909,7 @@ async def main(page: ft.Page):
             [
                 ft.Container(
                     content=ft.Row([ft.Icon(ic, size=16, color=NEON_CYAN), ft.Text(t(k), size=11, color=WHITE)], spacing=4),
-                    padding=ft.padding.symmetric(horizontal=10, vertical=8),
+                    padding=ft.Padding.symmetric(horizontal=10, vertical=8),
                     bgcolor=CARD_BG,
                     border=ft.Border.all(1, NEON_PURPLE),
                     border_radius=10,
