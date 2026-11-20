@@ -22,10 +22,10 @@ jobs:
         with:
           target: apk
           working-directory: .
-          runner-python-version: "3.12"
-          bundled-python-version: "3.12"
+          python-version: "3.12"
+          flutter-python-version: "3.12"
         env:
-          METAAPI_TOKEN: ${{ secrets.METAAPI_TOKEN }}
+          TICKERALL_API_KEY: ${{ secrets.TICKERALL_API_KEY }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
