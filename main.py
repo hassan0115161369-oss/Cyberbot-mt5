@@ -2,7 +2,7 @@ import asyncio
 import os
 from datetime import datetime
 import flet as ft
-from metaapi_cloud_sdk import MetaApi
+import httpx
 
 # ==================== الثوابت والهوية البصرية ====================
 BG = "#0A0D14"
@@ -18,7 +18,76 @@ WHITE = "#FFFFFF"
 WHITE_70 = "#B3FFFFFF"
 WHITE_54 = "#8AFFFFFF"
 
-DEFAULT_TOKEN = os.getenv("METAAPI_TOKEN", "")
+DEFAULT_API_KEY = os.getenv("TICKERALL_API_KEY", "")
+TICKERALL_BASE_URL = os.getenv("TICKERALL_BASE_URL", "https://api.tickerall.com/v1")
+
+
+# ==================== عميل TickerAll API ====================
+class TickerAllClient:
+    def __init__(self, api_key: str, base_url: str = TICKERALL_BASE_URL):
+        self.api_key = api_key.strip()
+        self.base_url = base_url.rstrip("/")
+        self.account_id = None
+        self.client = httpx.AsyncClient(
+            base_url=self.base_url,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=20.0,
+        )
+
+    async def connect(self, login: str, password: str, server: str):
+        payload = {
+            "login": login,
+            "password": password,
+            "server": server,
+            "platform": "mt5",
+        }
+        resp = await self.client.post("/accounts/connect", json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+        self.account_id = data.get("account_id") or login
+        return data
+
+    async def get_account_info(self):
+        resp = await self.client.get(f"/accounts/{self.account_id}/info")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_candles(self, symbol: str, timeframe: str = "15m", limit: int = 200):
+        params = {"symbol": symbol, "timeframe": timeframe, "limit": limit}
+        resp = await self.client.get(f"/accounts/{self.account_id}/candles", params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+    async def get_price(self, symbol: str):
+        resp = await self.client.get(
+            f"/accounts/{self.account_id}/price", params={"symbol": symbol}
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def place_order(
+        self,
+        symbol: str,
+        side: str,
+        volume: float,
+        sl: float,
+        tp: float,
+        comment: str = "CyberBot",
+    ):
+        payload = {
+            "symbol": symbol,
+            "side": side,  # "BUY" or "SELL"
+            "volume": volume,
+            "sl": sl,
+            "tp": tp,
+            "comment": comment,
+        }
+        resp = await self.client.post(f"/accounts/{self.account_id}/orders", json=payload)
+        resp.raise_for_status()
+        return resp.json()
 
 
 # ==================== دوال المؤشرات الفنية ====================
@@ -91,9 +160,8 @@ async def analyze_signal(closes):
 # ==================== حالة التطبيق ====================
 class AppState:
     def __init__(self):
-        self.api = None
-        self.account = None
-        self.connection = None
+        self.client: TickerAllClient | None = None
+        self.connected = False
         self.running = False
         self.symbol = "BTCUSD"
         self.timeframe = "15m"
@@ -112,7 +180,7 @@ def glass_card(content, padding=16, border_color=BORDER):
         content=content,
         padding=padding,
         bgcolor=GLASS_ALPHA,
-        border=ft.Border.all(1, border_color),
+        border=ft.border.all(1, border_color),
         border_radius=18,
         blur=ft.Blur(10, 10, ft.BlurStyle.NORMAL),
         shadow=ft.BoxShadow(
@@ -153,48 +221,36 @@ def add_log(msg):
             state.page.update()
 
 
-# ==================== منطق MetaApi ====================
-async def connect_mt5(token, account_id, password, server):
-    token = (token or "").strip()
+# ==================== منطق TickerAll ====================
+async def connect_mt5(api_key, account_id, password, server):
+    api_key = (api_key or "").strip()
     account_id = (account_id or "").strip()
     password = (password or "").strip()
     server = (server or "").strip()
 
-    if not token:
-        return False, "❌ يرجى إدخال MetaApi Token أولاً"
+    if not api_key:
+        return False, "❌ يرجى إدخال TickerAll API Key أولاً"
     if not account_id or not password:
         return False, "❌ يرجى إدخال رقم الحساب وكلمة المرور"
 
     try:
-        state.api = MetaApi(token)
-        state.account = await state.api.metatrader_account_api.create_account(
-            {
-                "name": f"CyberBot-{account_id}",
-                "type": "cloud",
-                "login": account_id,
-                "password": password,
-                "server": server,
-                "platform": "mt5",
-                "magic": 202500,
-            }
-        )
-        await state.account.deploy()
-        state.connection = state.account.get_streaming_connection()
-        await state.connection.connect()
-        await state.connection.wait_synchronized()
-        add_log(f"✅ تم الاتصال بالحساب {account_id} على {server}")
-        return True, "✅ متصل بنجاح"
+        state.client = TickerAllClient(api_key)
+        await state.client.connect(account_id, password, server)
+        state.connected = True
+        add_log(f"✅ تم الاتصال عبر TickerAll بالحساب {account_id} على {server}")
+        return True, "✅ متصل بنجاح عبر TickerAll"
     except Exception as e:
+        state.connected = False
         err_msg = f"❌ فشل الاتصال: {e}"
         add_log(err_msg)
         return False, err_msg
 
 
 async def fetch_candles(symbol, timeframe="15m", limit=200):
-    if not state.connection:
+    if not state.connected or not state.client:
         return []
     try:
-        candles = await state.connection.get_candles(symbol, timeframe, limit)
+        candles = await state.client.get_candles(symbol, timeframe, limit)
         return [float(c["close"]) for c in candles if "close" in c]
     except Exception as e:
         add_log(f"⚠️ تعذر جلب الشموع: {e}")
@@ -202,29 +258,31 @@ async def fetch_candles(symbol, timeframe="15m", limit=200):
 
 
 async def execute_trade(signal, confidence):
-    if not state.connection:
+    if not state.connected or not state.client:
         return
     try:
-        price_data = await state.connection.get_symbol_price(state.symbol)
+        price_data = await state.client.get_price(state.symbol)
         ask = float(price_data.get("ask") or 0.0)
         bid = float(price_data.get("bid") or 0.0)
 
         if signal == "BUY" and ask > 0:
-            await state.connection.create_market_buy_order(
-                state.symbol,
-                state.lot,
-                stop_loss=round(ask * 0.99, 5),
-                take_profit=round(ask * 1.02, 5),
-                options={"comment": "CyberBot BUY"},
+            await state.client.place_order(
+                symbol=state.symbol,
+                side="BUY",
+                volume=state.lot,
+                sl=round(ask * 0.99, 5),
+                tp=round(ask * 1.02, 5),
+                comment="CyberBot BUY",
             )
             add_log(f"🟢 شراء {state.symbol} لوت {state.lot} - ثقة {confidence}%")
         elif signal == "SELL" and bid > 0:
-            await state.connection.create_market_sell_order(
-                state.symbol,
-                state.lot,
-                stop_loss=round(bid * 1.01, 5),
-                take_profit=round(bid * 0.98, 5),
-                options={"comment": "CyberBot SELL"},
+            await state.client.place_order(
+                symbol=state.symbol,
+                side="SELL",
+                volume=state.lot,
+                sl=round(bid * 1.01, 5),
+                tp=round(bid * 0.98, 5),
+                comment="CyberBot SELL",
             )
             add_log(f"🔴 بيع {state.symbol} لوت {state.lot} - ثقة {confidence}%")
     except Exception as e:
@@ -251,7 +309,7 @@ async def trading_loop(symbol_dd, tf_dd):
 # ==================== واجهة Flet ====================
 async def main(page: ft.Page):
     state.page = page
-    page.title = "CyberBot MT5"
+    page.title = "CyberBot MT5 - TickerAll"
     page.bgcolor = BG
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 20
@@ -263,7 +321,7 @@ async def main(page: ft.Page):
             ft.Icon(ft.Icons.BOLT, size=80, color=GOLD),
             ft.Text("CYBERBOT MT5", size=28, color=CYAN, weight=ft.FontWeight.BOLD),
             ft.Text(
-                "جاري الاتصال بخوادم السيولة والذكاء الاصطناعي...",
+                "جاري الاتصال بخوادم TickerAll والذكاء الاصطناعي...",
                 size=13,
                 color=WHITE_70,
                 text_align=ft.TextAlign.CENTER,
@@ -311,9 +369,9 @@ async def main(page: ft.Page):
     )
 
     async def refresh_account():
-        if state.connection:
+        if state.connected and state.client:
             try:
-                info = await state.connection.get_account_information()
+                info = await state.client.get_account_info()
                 balance_txt.value = f"${float(info.get('balance', 0)):,.2f}"
                 equity_txt.value = f"${float(info.get('equity', 0)):,.2f}"
                 pl = float(info.get("profit", 0))
@@ -324,7 +382,7 @@ async def main(page: ft.Page):
         page.update()
 
     async def start_bot(e):
-        if not state.connection:
+        if not state.connected:
             add_log("⚠️ لا يوجد اتصال أولاً")
             return
         if state.running:
@@ -408,8 +466,8 @@ async def main(page: ft.Page):
 
     # ---------- شاشة تسجيل الدخول ----------
     token_field = ft.TextField(
-        label="MetaApi Token",
-        value=DEFAULT_TOKEN,
+        label="TickerAll API Key",
+        value=DEFAULT_API_KEY,
         password=True,
         can_reveal_password=True,
         bgcolor=GLASS,
@@ -456,7 +514,7 @@ async def main(page: ft.Page):
 
     async def on_connect(e):
         status_text.color = CYAN
-        status_text.value = "⏳ جاري الاتصال الآمن بـ MetaApi..."
+        status_text.value = "⏳ جاري الاتصال الآمن بـ TickerAll..."
         page.update()
         ok, message = await connect_mt5(
             token_field.value,
@@ -480,7 +538,7 @@ async def main(page: ft.Page):
         [
             ft.Container(height=24),
             ft.Text("SECURE ACCESS", size=22, color=PURPLE, weight=ft.FontWeight.BOLD),
-            ft.Text("ربط حساب MetaTrader 5", size=13, color=WHITE_54),
+            ft.Text("ربط حساب MetaTrader 5 عبر TickerAll", size=13, color=WHITE_54),
             token_field,
             acc_field,
             pass_field,
@@ -505,4 +563,4 @@ async def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    ft.run(main)
+    ft.app(main)
